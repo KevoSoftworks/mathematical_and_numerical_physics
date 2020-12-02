@@ -24,12 +24,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 class GeneralSolver1D:
-	def __init__(self, xbounds, tbounds, nx, nt, ic, M=1, bc=(0, 0), bc_inner=True):
+	def __init__(self, xbounds, tbounds, nx, nt, ic, M=1, bc=(0, 0), bc_inner=True, nx_as_interval=True):
 		if not callable(ic):
 			raise TypeError("Initial condition must be a function or lambda expression with arguments x and t")
 
 		if len(bc) % 2 != 0:
 			raise ValueError("Boundary conditions must be an even number of elements")
+
+		# Compensate for retarded behaviour. n is a count of elements, i.e. n grid points. Don't fucking define
+		# it as the god damn amount of intervals. Math =/= programming ffs.
+		if nx_as_interval:
+			nx += 1
 
 		self.x = np.linspace(*xbounds, num=nx)
 		self.t = np.linspace(*tbounds, num=nt)
@@ -128,12 +133,16 @@ class GeneralSolver1D:
 			self.solution[-1] = self.bc[1]
 
 class GeneralSolver2D:
-	def __init__(self, xybounds, tbounds, nxy, nt, ic, M=1, bc=lambda x, y: 0):
+	def __init__(self, xybounds, tbounds, nxy, nt, ic, M=1, bc=lambda x, y: 0, nxy_as_interval=True):
 		if not callable(ic):
 			raise TypeError("Initial condition must be a function or lambda expression with arguments x, y and t")
 
 		if not callable(bc):
 			raise TypeError("Boundary condition must be a function or lambda expression with arguments x and y")
+
+		# Same as the 1D case, compensate for retarded definitions
+		if nxy_as_interval:
+			nxy = [i + 1 for i in nxy]
 
 		self.x = np.linspace(*xybounds[0], num=nxy[0])
 		self.y = np.linspace(*xybounds[1], num=nxy[1])
