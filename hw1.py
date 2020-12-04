@@ -19,12 +19,14 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 from functools import cached_property
 import math
+import copy
 
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.linalg import lu_factor, lu_solve
 
 class GeneralSolver1D:
-	def __init__(self, xbounds, tbounds, nx, nt, ic, M=1, bc=(0, 0), bc_inner=True, nx_as_interval=True):
+	def __init__(self, xbounds, tbounds, nx, nt, ic, M=1, bc=(0, 0), bc_inner=True, nx_as_interval=False):
 		if not callable(ic):
 			raise TypeError("Initial condition must be a function or lambda expression with arguments x and t")
 
@@ -36,8 +38,8 @@ class GeneralSolver1D:
 		if nx_as_interval:
 			nx += 1
 
-		self.x = np.linspace(*xbounds, num=nx)
-		self.t = np.linspace(*tbounds, num=nt)
+		self.x, self.dx = np.linspace(*xbounds, num=nx, retstep=True)
+		self.t, self.dt = np.linspace(*tbounds, num=nt, retstep=True)
 
 		self.solution = ic(self.x, self.t[0])
 
@@ -88,6 +90,7 @@ class GeneralSolver1D:
 
 		if self.bc_inner and (key == 0 or key == len(self.x) - 1):
 			self.forceBC()
+			pass
 
 	def __getitem__(self, key):
 		self._keycheck(key)
@@ -107,16 +110,6 @@ class GeneralSolver1D:
 	def alpha(self):
 		# Computation of dx and dt is rather hacky, this means that grid spacing has to be constant. Too bad!
 		return self.M * self.dt / (self.dx**2)
-
-	@cached_property
-	def dx(self):
-		# Computation of dx and dt is rather hacky, this means that grid spacing has to be constant. Too bad!
-		return self.x[1] - self.x[0]
-
-	@cached_property
-	def dt(self):
-		# Computation of dx and dt is rather hacky, this means that grid spacing has to be constant. Too bad!
-		return self.t[1] - self.t[0]
 
 	def solve(self):
 		raise NotImplementedError("GeneralSolver1D does not implement a solution strategy")
@@ -144,9 +137,9 @@ class GeneralSolver2D:
 		if nxy_as_interval:
 			nxy = [i + 1 for i in nxy]
 
-		self.x = np.linspace(*xybounds[0], num=nxy[0])
-		self.y = np.linspace(*xybounds[1], num=nxy[1])
-		self.t = np.linspace(*tbounds, num=nt)
+		self.x, self.dx = np.linspace(*xybounds[0], num=nxy[0], retstep=True)
+		self.y, self.dy = np.linspace(*xybounds[1], num=nxy[1], retstep=True)
+		self.t, self.dt = np.linspace(*tbounds, num=nt, retstep=True)
 
 		self.meshx, self.meshy = np.meshgrid(self.x, self.y, indexing="ij")
 
@@ -201,20 +194,6 @@ class GeneralSolver2D:
 		# TODO: derive and implement this thing, if required
 		pass
 
-	@cached_property
-	def dx(self):
-		# Computation of dx and dt is rather hacky, this means that grid spacing has to be constant. Too bad!
-		return self.x[1] - self.x[0]
-	
-	@cached_property
-	def dy(self):
-		return self.y[1] - self.y[0]
-
-	@cached_property
-	def dt(self):
-		# Computation of dx and dt is rather hacky, this means that grid spacing has to be constant. Too bad!
-		return self.t[1] - self.t[0]
-
 	def solve(self):
 		raise NotImplementedError("GeneralSolver2D does not implement a solution strategy")
 
@@ -237,10 +216,13 @@ class EulerForward1D(GeneralSolver1D):
 		return dx**2/(2*m)
 
 	@classmethod
-	def stable_time_steps(cls, xbounds, tbounds, nx, M):
+	def stable_time_steps(cls, xbounds, tbounds, nx, M, nx_as_interval=False):
 		# TODO: This method should probably be generalised to GeneralSolver1D, since it is used multiple times
 		# and only depends on the implementation of stable_time(), which can be implemented in each class
 		# separately.
+
+		if nx_as_interval:
+			nx += 1
 
 		x = xbounds[1] - xbounds[0]
 		t = tbounds[1] - tbounds[0]
@@ -276,10 +258,13 @@ class DuFortFrankel1D(GeneralSolver1D):
 		return 1E-2 * dx
 
 	@classmethod
-	def stable_time_steps(cls, xbounds, tbounds, nx):
+	def stable_time_steps(cls, xbounds, tbounds, nx, nx_as_interval=False):
 		# TODO: This method should probably be generalised to GeneralSolver1D, since it is used multiple times
 		# and only depends on the implementation of stable_time(), which can be implemented in each class
 		# separately.
+
+		if nx_as_interval:
+			nx += 1
 
 		x = xbounds[1] - xbounds[0]
 		t = tbounds[1] - tbounds[0]
@@ -312,6 +297,85 @@ class DuFortFrankel1D(GeneralSolver1D):
 			self.cur_t += 1
 
 			yield self.solution
+
+class EulerBackward1D(GeneralSolver1D):
+	class TridiagonalCoefficient:
+		def __init__(self, size, bc=(0, 0)):
+			self.coff = np.zeros(size)
+			self.bc = bc
+
+		def __getitem__(self, index):
+			if index < 0:
+				return self.bc[0]
+
+			elif index >= len(self.coff):
+				return self.bc[1]
+
+			else:
+				return self.coff[index]
+
+		def __setitem__(self, index, value):
+			self.coff[index] = value
+
+		def reset(self):
+			self.coff = np.zeros(len(self.coff))
+
+	def __setitem__(self, key, value):
+		# We override the __setitem__ function because the self.forceBC() function provides
+		# invalid results when updating the solution element-by-element. We need to call
+		# self.forceBC() in solve() ourselves
+
+		self._keycheck(key)
+
+		if key < 0 or key >= len(self.x):
+			raise IndexError("Boundary conditions cannot be dynamically changed")
+
+		self.solution[key] = value
+
+		
+	@cached_property
+	def A_raw(self):
+		diag = (1 + 2*self.alpha) * np.ones(len(self.x))
+		off_diag = -self.alpha * np.ones(len(self.x))
+
+		return diag, off_diag
+
+	@cached_property
+	def A(self):
+		diag, off_diag = self.A_raw
+		
+		return np.diag(diag, 0) + np.diag(off_diag, 1)[:-1, :-1] + np.diag(off_diag, -1)[:-1, :-1]
+
+	def solve(self):
+		diag, off_diag = self.A_raw
+		off_diag = -1 * copy.deepcopy(off_diag)	# Since we solve for these to be negative specifically
+
+		e = self.TridiagonalCoefficient(len(self.x))
+		f = self.TridiagonalCoefficient(len(self.x))
+
+		self.solution = np.array(self.solution)
+		inv = np.linalg.inv(self.A)
+
+		while self.cur_t < len(self.t):
+			e.reset()
+			f.reset()
+
+			# Forward sweep
+			for i in range(len(self.x)):
+				e[i] = off_diag[i] / (diag[i] - off_diag[i]*e[i-1])
+				f[i] = (self[i] + off_diag[i]*f[i-1]) / (diag[i] - off_diag[i]*e[i-1])
+
+			# Back substitution
+			for i in range(len(self.x) - 1, -1, -1):
+				self[i] = f[i] + e[i] * self[i+1]
+
+			#self.solution = copy.deepcopy(inv.dot(self.solution))
+
+			self.forceBC()
+
+			yield self.solution
+
+			self.cur_t += 1
 
 
 if __name__ == "__main__":
