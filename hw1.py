@@ -33,8 +33,7 @@ class GeneralSolver1D:
 		if len(bc) % 2 != 0:
 			raise ValueError("Boundary conditions must be an even number of elements")
 
-		# Compensate for retarded behaviour. n is a count of elements, i.e. n grid points. Don't fucking define
-		# it as the god damn amount of intervals. Math =/= programming ffs.
+		# Compensate for differences in definition
 		if nx_as_interval:
 			nx += 1
 
@@ -133,7 +132,7 @@ class GeneralSolver2D:
 		if not callable(bc):
 			raise TypeError("Boundary condition must be a function or lambda expression with arguments x and y")
 
-		# Same as the 1D case, compensate for retarded definitions
+		# Compensate for differences in definition
 		if nxy_as_interval:
 			nxy = [i + 1 for i in nxy]
 
