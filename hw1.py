@@ -150,7 +150,7 @@ class GeneralSolver1D:
 
 
 class GeneralSolver2D:
-	def __init__(self, xybounds, tbounds, nxy, nt, ic, M=1, bc=lambda x, y: 0, nxy_as_interval=True):
+	def __init__(self, xybounds, tbounds, nxy, nt, ic, M=1, bc=lambda x, y: 0*x + 0*y, nxy_as_interval=True):
 		if not callable(ic):
 			raise TypeError("Initial condition must be a function or lambda expression with arguments x, y and t")
 
@@ -169,7 +169,7 @@ class GeneralSolver2D:
 
 		self.solution = ic(self.meshx, self.meshy, self.t[0])
 		self.bc = bc
-		#self.forceBC()
+		self.forceBC()
 		
 		self.M = M
 		self.bc = bc
@@ -188,7 +188,6 @@ class GeneralSolver2D:
 		# Since we are working with a 2D space, we expect two elements in our tuple
 		if len(key) != 2:
 			raise IndexError(f"Expecting 2D index, got dimension {len(key)}")
-		print(key, type(key))
 
 		# Return success
 		return True
@@ -196,27 +195,21 @@ class GeneralSolver2D:
 	def __setitem__(self, key, value):
 		self._keycheck(key)
 
-		if any(key < 0) or key[0] >= len(self.x) or key[1] >= len(self.y):
+		if key < (0, 0) or key >= (len(self.x), len(self.y)):
 			raise IndexError(f"Index {key} out of bounds for x={(0, len(self.x)-1)}, y={(0, len(self.y)-1)}")
 
 		self.solution[key] = value
 
-		if any(key == 0) or key[0] == len(self.x) - 1 or key[1] == len(self.y) - 1:
+		if key[0] == 0 or key[1] == 0 or key[0] == len(self.x) - 1 or key[1] == len(self.y) - 1:
 			self.forceBC()
 
 	def __getitem__(self, key):
 		self._keycheck(key)
 
-		if any(key < 0) or key[0] >= len(self.x) or key[1] >= len(self.y):
+		if key < (0, 0) or key >= (len(self.x), len(self.y)):
 			raise IndexError(f"Index {key} out of bounds for x={(0, len(self.x)-1)}, y={(0, len(self.y)-1)}")
 		
 		return self.solution[key]
-
-	
-	@cached_property
-	def alpha(self):
-		# TODO: derive and implement this thing, if required
-		pass
 
 	def solve(self):
 		raise NotImplementedError("GeneralSolver2D does not implement a solution strategy")
@@ -276,6 +269,48 @@ class EulerForward1D(GeneralSolver1D):
 			self.cur_t += 1
 
 			yield self.solution
+
+
+
+class EulerForward2D(GeneralSolver2D):
+	@staticmethod
+	def stable_time(dx, dy, m):
+		return dx**2 * dy**2 / (2*m*(dx**2 + dy**2))
+
+	@classmethod
+	def stable_time_steps(cls, xybounds, tbounds, nxy, M, nxy_as_interval=False):
+		if nxy_as_interval:
+			nxy = [i + 1 for i in nxy]
+
+		x = xybounds[0][1] - xybounds[0][0]
+		y = xybounds[1][1] - xybounds[1][0]
+		t = tbounds[1] - tbounds[0]
+
+		dx = x / (nxy[0] - 1)
+		dy = y / (nxy[1] - 1)
+
+		dt = cls.stable_time(dx, dy, M)
+
+		nt = t / dt + 1
+
+		return math.ceil(nt)
+
+	def solve(self):
+		while self.cur_t < len(self.t):
+			prev = copy.deepcopy(self.solution)
+
+			for i in range(1, len(self.x) - 1):
+				for j in range(1, len(self.y) - 1):
+					self[i, j] = self.M * self.dt / (self.dx**2 * self.dy**2) * ( \
+						self.dy**2 * (prev[i+1, j] - 2*prev[i, j] + prev[i-1, j]) + \
+						self.dx**2 * (prev[i, j+1] - 2*prev[i, j] + prev[i, j-1]) \
+					) + prev[i, j]
+
+			self.forceBC()
+
+			yield self.solution
+
+			self.cur_t += 1
 
 
 
