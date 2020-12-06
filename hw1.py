@@ -25,6 +25,29 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.linalg import lu_factor, lu_solve
 
+class TridiagonalCoefficient:
+	def __init__(self, size, bc=(0, 0)):
+		self.coff = np.zeros(size)
+		self.bc = bc
+
+	def __getitem__(self, index):
+		if index < 0:
+			return self.bc[0]
+
+		elif index >= len(self.coff):
+			return self.bc[1]
+
+		else:
+			return self.coff[index]
+
+	def __setitem__(self, index, value):
+		self.coff[index] = value
+
+	def reset(self):
+		self.coff = np.zeros(len(self.coff))
+
+
+
 class GeneralSolver1D:
 	def __init__(self, xbounds, tbounds, nx, nt, ic, M=1, bc=(0, 0), bc_inner=True, nx_as_interval=False):
 		if not callable(ic):
@@ -124,6 +147,8 @@ class GeneralSolver1D:
 			self.solution[0] = self.bc[0]
 			self.solution[-1] = self.bc[1]
 
+
+
 class GeneralSolver2D:
 	def __init__(self, xybounds, tbounds, nxy, nt, ic, M=1, bc=lambda x, y: 0, nxy_as_interval=True):
 		if not callable(ic):
@@ -209,6 +234,8 @@ class GeneralSolver2D:
 		self.solution[0, :] = self.bc(0, self.y)
 		self.solution[-1, :] = self.bc(self.x[-1], self.y)
 
+
+
 class EulerForward1D(GeneralSolver1D):
 	@staticmethod
 	def stable_time(dx, m):
@@ -249,6 +276,7 @@ class EulerForward1D(GeneralSolver1D):
 			self.cur_t += 1
 
 			yield self.solution
+
 
 
 class DuFortFrankel1D(GeneralSolver1D):
@@ -297,28 +325,9 @@ class DuFortFrankel1D(GeneralSolver1D):
 
 			yield self.solution
 
+
+
 class EulerBackward1D(GeneralSolver1D):
-	class TridiagonalCoefficient:
-		def __init__(self, size, bc=(0, 0)):
-			self.coff = np.zeros(size)
-			self.bc = bc
-
-		def __getitem__(self, index):
-			if index < 0:
-				return self.bc[0]
-
-			elif index >= len(self.coff):
-				return self.bc[1]
-
-			else:
-				return self.coff[index]
-
-		def __setitem__(self, index, value):
-			self.coff[index] = value
-
-		def reset(self):
-			self.coff = np.zeros(len(self.coff))
-
 	def __setitem__(self, key, value):
 		# We override the __setitem__ function because the self.forceBC() function provides
 		# invalid results when updating the solution element-by-element. We need to call
@@ -331,7 +340,6 @@ class EulerBackward1D(GeneralSolver1D):
 
 		self.solution[key] = value
 
-		
 	@cached_property
 	def A_raw(self):
 		diag = (1 + 2*self.alpha) * np.ones(len(self.x))
@@ -349,11 +357,8 @@ class EulerBackward1D(GeneralSolver1D):
 		diag, off_diag = self.A_raw
 		off_diag = -1 * copy.deepcopy(off_diag)	# Since we solve for these to be negative specifically
 
-		e = self.TridiagonalCoefficient(len(self.x))
-		f = self.TridiagonalCoefficient(len(self.x))
-
-		self.solution = np.array(self.solution)
-		inv = np.linalg.inv(self.A)
+		e = TridiagonalCoefficient(len(self.x))
+		f = TridiagonalCoefficient(len(self.x))
 
 		while self.cur_t < len(self.t):
 			e.reset()
@@ -368,7 +373,57 @@ class EulerBackward1D(GeneralSolver1D):
 			for i in range(len(self.x) - 1, -1, -1):
 				self[i] = f[i] + e[i] * self[i+1]
 
-			#self.solution = copy.deepcopy(inv.dot(self.solution))
+			self.forceBC()
+
+			yield self.solution
+
+			self.cur_t += 1
+
+
+
+class CrankNicolson1D(EulerBackward1D):
+	@cached_property
+	def A_raw(self):
+		diag = 2*(1 + self.alpha) * np.ones(len(self.x))
+		off_diag = -self.alpha * np.ones(len(self.x))
+
+		return diag, off_diag
+
+	@cached_property
+	def B_raw(self):
+		diag = 2*(1 - self.alpha) * np.ones(len(self.x))
+		off_diag = self.alpha * np.ones(len(self.x))
+
+		return diag, off_diag
+
+	@cached_property
+	def B(self):
+		diag, off_diag = self.B_raw
+		
+		return np.diag(diag, 0) + np.diag(off_diag, 1)[:-1, :-1] + np.diag(off_diag, -1)[:-1, :-1]
+
+	def solve(self):
+		diag, off_diag = self.A_raw
+		off_diag = -1 * copy.deepcopy(off_diag)	# Since we solve for these to be negative specifically
+
+		e = TridiagonalCoefficient(len(self.x))
+		f = TridiagonalCoefficient(len(self.x))
+
+		while self.cur_t < len(self.t):
+			e.reset()
+			f.reset()
+
+			# Compute known side
+			self.solution = self.B @ self.solution
+
+			# Forward sweep
+			for i in range(len(self.x)):
+				e[i] = off_diag[i] / (diag[i] - off_diag[i]*e[i-1])
+				f[i] = (self[i] + off_diag[i]*f[i-1]) / (diag[i] - off_diag[i]*e[i-1])
+
+			# Back substitution
+			for i in range(len(self.x) - 1, -1, -1):
+				self[i] = f[i] + e[i] * self[i+1]
 
 			self.forceBC()
 
