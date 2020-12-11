@@ -390,7 +390,7 @@ class EulerBackward1D(GeneralSolver1D):
 
 	def solve(self):
 		diag, off_diag = self.A_raw
-		off_diag = -1 * copy.deepcopy(off_diag)	# Since we solve for these to be negative specifically
+		off_diag = -copy.deepcopy(off_diag)	# Since we solve for these to be negative specifically
 
 		e = TridiagonalCoefficient(len(self.x))
 		f = TridiagonalCoefficient(len(self.x))
@@ -400,12 +400,12 @@ class EulerBackward1D(GeneralSolver1D):
 			f.reset()
 
 			# Forward sweep
-			for i in range(len(self.x)):
+			for i in range(1, len(self.x) - 1):
 				e[i] = off_diag[i] / (diag[i] - off_diag[i]*e[i-1])
 				f[i] = (self[i] + off_diag[i]*f[i-1]) / (diag[i] - off_diag[i]*e[i-1])
 
 			# Back substitution
-			for i in range(len(self.x) - 1, -1, -1):
+			for i in range(len(self.x) - 1, 0, -1):
 				self[i] = f[i] + e[i] * self[i+1]
 
 			self.forceBC()
@@ -452,12 +452,12 @@ class CrankNicolson1D(EulerBackward1D):
 			self.solution = self.B @ self.solution
 
 			# Forward sweep
-			for i in range(len(self.x)):
+			for i in range(1, len(self.x) - 1):
 				e[i] = off_diag[i] / (diag[i] - off_diag[i]*e[i-1])
 				f[i] = (self[i] + off_diag[i]*f[i-1]) / (diag[i] - off_diag[i]*e[i-1])
 
 			# Back substitution
-			for i in range(len(self.x) - 1, -1, -1):
+			for i in range(len(self.x) - 1, 0, -1):
 				self[i] = f[i] + e[i] * self[i+1]
 
 			self.forceBC()
