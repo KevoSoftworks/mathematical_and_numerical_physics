@@ -300,7 +300,7 @@ class PhaseSepEulerForward1D(GeneralSolver1D):
 		ak = self.alpha * self.kappa
 
 		while self.cur_t < len(self.t):
-			self.solution = [\
+			self.solution[1:-1] = [\
 				(1 + 2*self.alpha - 6*ak / self.dx**2) * self[i] \
 				+ (-1 + 4*self.kappa / self.dx**2) * self.alpha * self[i+1] \
 				+ (-1 + 4*self.kappa / self.dx**2) * self.alpha * self[i-1] \
@@ -308,24 +308,14 @@ class PhaseSepEulerForward1D(GeneralSolver1D):
 					self[i+1]**3 - 2*self[i]**3 + self[i-1]**3 \
 					- self.kappa * (self[i+2] + self[i-2]) / self.dx**2 \
 				) \
-				for i in range(len(self.x))
+				for i in range(1, len(self.x) - 1)
 			]
 
-			#self.solution[1:-1] = [ \
-			#	self[i] + self.M * self.dt * ( \
-			#		(self[i+1]**3 - 2*self[i]**3 + self[i-1]**3)/self.dx**2 \
-			#		-(self[i+1] - 2*self[i] + self[i-1])/self.dx**2 \
-			#		-self.kappa*( \
-			#			(self[i+2] - 4*self[i+1] + 6*self[i] - 4*self[i-1] + self[i-2]) / (self.dx**4) \
-			#		) \
-			#	) \
-			#	for i in range(1, len(self.x) - 1)
-			#]
-
 			self.forceBC()
-			self.cur_t += 1
 
 			yield self.solution
+
+			self.cur_t += 1
 
 
 
