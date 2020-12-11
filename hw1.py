@@ -120,10 +120,9 @@ class GeneralSolver1D:
 		# Force BC outside the range
 		if key < 0 or key >= len(self.x):
 			if key > 0:
-				key %= len(self.x)
-
-			index = int(len(self.bc)/2) + key
-			return self.bc[index]
+				return self.bc[-1]
+			else:
+				return self.bc[0]
 		else:
 			return self.solution[key]
 
@@ -264,6 +263,64 @@ class EulerForward1D(GeneralSolver1D):
 				(1 - 2*self.alpha) * self[i] + self.alpha * (self[i + 1] + self[i - 1]) \
 				for i in range(len(self.x))
 			]
+
+			self.forceBC()
+			self.cur_t += 1
+
+			yield self.solution
+
+
+
+class PhaseSepEulerForward1D(GeneralSolver1D):
+	@staticmethod
+	def stable_time(dx, m, k):
+		return dx**2/(m*(4 + 8 * (k / dx**2)))
+
+	@classmethod
+	def stable_time_steps(cls, xbounds, tbounds, nx, M, kappa, nx_as_interval=False):
+		if nx_as_interval:
+			nx += 1
+
+		x = xbounds[1] - xbounds[0]
+		t = tbounds[1] - tbounds[0]
+
+		# Compute dx, compensate for the fact that we need nx - 1 steps to go from x[0] to x[1]
+		dx = x / (nx - 1)
+		dt = cls.stable_time(dx, M, kappa)
+
+		# Compute the time steps
+		nt = t / dt + 1
+
+		return math.ceil(nt)
+
+	def set_kappa(self, k):
+		self.kappa = k
+
+	def solve(self):
+		ak = self.alpha * self.kappa
+
+		while self.cur_t < len(self.t):
+			self.solution = [\
+				(1 + 2*self.alpha - 6*ak / self.dx**2) * self[i] \
+				+ (-1 + 4*self.kappa / self.dx**2) * self.alpha * self[i+1] \
+				+ (-1 + 4*self.kappa / self.dx**2) * self.alpha * self[i-1] \
+				+ self.alpha * (\
+					self[i+1]**3 - 2*self[i]**3 + self[i-1]**3 \
+					- self.kappa * (self[i+2] + self[i-2]) / self.dx**2 \
+				) \
+				for i in range(len(self.x))
+			]
+
+			#self.solution[1:-1] = [ \
+			#	self[i] + self.M * self.dt * ( \
+			#		(self[i+1]**3 - 2*self[i]**3 + self[i-1]**3)/self.dx**2 \
+			#		-(self[i+1] - 2*self[i] + self[i-1])/self.dx**2 \
+			#		-self.kappa*( \
+			#			(self[i+2] - 4*self[i+1] + 6*self[i] - 4*self[i-1] + self[i-2]) / (self.dx**4) \
+			#		) \
+			#	) \
+			#	for i in range(1, len(self.x) - 1)
+			#]
 
 			self.forceBC()
 			self.cur_t += 1
