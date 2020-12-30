@@ -87,7 +87,7 @@ class SparseTridiagonal:
 		x = np.zeros(n)
 		x[-1] = y[-1] / self.u[0, -1]
 
-		for i in range(n - 1, 0):
+		for i in range(n - 1, 0, -1):
 			x[i - 1] = (y[i - 1] - self.u[1, i] * x[i]) / self.u[0, i - 1]
 
 		return x
