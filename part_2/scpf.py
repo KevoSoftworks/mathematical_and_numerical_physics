@@ -42,15 +42,9 @@ class Grid:
 			if i.charge != 0:
 				return i
 
-	def polarisation_energy(self):
-		res = 0
-
-		for i in self.molecules():
-			for a in Direction:
-				e = [i.E0(d, self.molecules()) for d in Direction]
-				res += e[a.value] * i.dipole(e)[a.value]
-
-		return -0.5*res
+	def flatten(self):
+		charged = self.get_charged_molecule()
+		return np.array([i.E0(a, charged) if i != charged else 0 for a in Direction for i in self.molecules()])
 
 class UnitCell:
 	def __init__(self, origin, a):
@@ -80,7 +74,8 @@ class Molecule:
 	@lru_cache
 	def E0(self, dir, charged):
 		return -Const.INV_E0 * charged.charge * self.diff(charged)[dir.value] / self.dist_to(charged)**3
-	
+
+	@lru_cache
 	def T(self, b, j, c):
 		vec = self.diff(j)
 		dist = self.dist_to(j)
@@ -89,8 +84,10 @@ class Molecule:
 
 		return Const.INV_E0 * (3*vec[b.value]*vec[c.value] - term) / dist**5
 
+	@lru_cache
 	def diff(self, mol: Molecule):
 		return mol.pos - self.pos
 
+	@lru_cache
 	def dist_to(self, mol: Molecule):
 		return np.linalg.norm(self.diff(mol))
