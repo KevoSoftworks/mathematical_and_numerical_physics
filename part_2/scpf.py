@@ -4,7 +4,7 @@ import itertools as it
 from enum import Enum
 
 import numpy as np
-from scipy.constants import epsilon_0
+from scipy.constants import epsilon_0, elementary_charge
 
 class Direction(Enum):
 	X = 0
@@ -12,7 +12,7 @@ class Direction(Enum):
 	Z = 2
 
 class Const:
-	INV_E0 = 1E9 / (4*np.pi*epsilon_0)
+	INV_E0 = elementary_charge * 1E9 / (4*np.pi*epsilon_0)
 
 class Grid:
 	def __init__(self, Nprime, a):
@@ -31,6 +31,11 @@ class Grid:
 		for lat in self.lattice.values():
 			for mol in lat.molecules:
 				yield mol
+
+	def get_charged_molecule(self):
+		for i in self.molecules():
+			if i.charge != 0:
+				return i
 
 	def polarisation_energy(self):
 		res = 0
