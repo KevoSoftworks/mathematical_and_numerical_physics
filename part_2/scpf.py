@@ -44,7 +44,10 @@ class Grid:
 
 	def flatten(self):
 		charged = self.get_charged_molecule()
-		return np.array([i.E0(a, charged) if i != charged else 0 for a in Direction for i in self.molecules()])
+		f = np.array([i.E0(a, charged) if i != charged else 0 for a in Direction for i in self.molecules()])
+		coords = np.array([i.pos for i in self.molecules()])
+
+		return f, coords
 
 class UnitCell:
 	def __init__(self, origin, a):
