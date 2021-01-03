@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import itertools as it
+from functools import cached_property, lru_cache
 from enum import Enum
 
 import numpy as np
@@ -23,6 +24,10 @@ class Grid:
 			i:UnitCell(self.index2coord(*i), self.a) \
 			for i in it.product(*[range(2*Nprime) for _ in range(3)]) \
 		}
+
+	@cached_property
+	def size(self):
+		return len(list(self.molecules()))
 	
 	def index2coord(self, *indices):
 		return [self.a * (i - self.Nprime) for i in indices]
@@ -71,28 +76,10 @@ class Molecule:
 		# TODO: not hardcode this?
 		if np.count_nonzero(self.pos) == 0:
 			self.charge = 1
-
-	def alpha(self, a: Direction, b: Direction):
-		POL = 0.08	# TODO: Not hardcode this?
-
-		if a == b:
-			return POL
-		return 0
-
-	def dipole(self, E):
-		return [np.sum([self.alpha(a, b) * E[b.value] for b in Direction]) for a in Direction]
 	
-	def E0(self, dir, mol):
-		return -Const.INV_E0 \
-			* np.sum([k.charge * (self.diff(k))[dir.value] / self.dist_to(k)**3 for k in mol if k.charge != 0])
-
-	def Epol(self, dir, mol):
-		pass
-		#np.sum(\
-		#	[np.sum( \
-		#		[self.T(dir, j, c)*j.dipole(...) for c in Direction] \ #TODO
-		#	) for j in mol if j not self] \
-		#)
+	@lru_cache
+	def E0(self, dir, charged):
+		return -Const.INV_E0 * charged.charge * self.diff(charged)[dir.value] / self.dist_to(charged)**3
 	
 	def T(self, b, j, c):
 		vec = self.diff(j)
