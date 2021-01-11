@@ -19,8 +19,9 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
 import re
+import numpy as np
 
-def to_latex(arr, d, type="bmatrix"):
+def to_latex(arr, d=2, type="bmatrix"):
 	string = str(arr.round(decimals=d))
 	string = re.sub(r"^\s*\[*\s*", "", string)
 	string = re.sub(r"\s*\]*\s*$", "", string)
@@ -28,6 +29,63 @@ def to_latex(arr, d, type="bmatrix"):
 	string = re.sub(r"\s+", r"&", string)
 
 	return r"\begin{" + type + "}" + string + r"\end{" + type + "}"
+
+
+
+def eigen_power(A, b0, TOL=1E-8, ret_cycles=False):
+	MAX_ITER = 200
+
+	b0 = b0 / np.linalg.norm(b0)
+	b1 = A @ b0
+	R0 = b0.T @ b1
+
+	epsilon = 999
+	iter = 0
+
+	while epsilon >= TOL and iter <= MAX_ITER:
+		b0 = b1 / np.linalg.norm(b1)
+		b1 = A @ b0
+		R1 = b0.T @ b1
+
+		epsilon = np.abs(R1 - R0)
+		R0 = R1
+		iter += 1
+
+	if ret_cycles:
+		return R0, b0, iter
+	else:
+		return R0, b0
+
+def eigen_inv_power(A, *args, **kwargs):
+	return eigen_power(np.linalg.inv(A), *args, **kwargs)
+
+def eigen_shift_inv_power(A, b0, shift, TOL=1E-8, ret_cycles=False):
+	MAX_ITER = 200
+
+	mat = A - shift * np.diag(np.ones(len(A)))
+
+	b0 = b0 / np.linalg.norm(b0)
+	b1 = np.linalg.solve(mat, b0)
+	S0 = b0.T @ b1
+
+	epsilon = 999
+	iter = 0
+
+	while epsilon >= TOL and iter <= MAX_ITER:
+		b0 = b1 / np.linalg.norm(b1)
+		b1 = np.linalg.solve(mat, b0)
+		S1 = b0.T @ b1
+
+		epsilon = np.abs(1/S1 - 1/S0)
+		S0 = S1
+		iter += 1
+
+	lambda_ = 1/S0 + shift
+
+	if ret_cycles:
+		return lambda_, b0, iter
+	else:
+		return lambda_, b0
 
 if __name__ == "__main__":
 	print("This file can only be imported")
