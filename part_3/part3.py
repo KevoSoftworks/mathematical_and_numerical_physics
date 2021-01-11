@@ -18,5 +18,16 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 """
 
+import re
+
+def to_latex(arr, d, type="bmatrix"):
+	string = str(arr.round(decimals=d))
+	string = re.sub(r"^\s*\[*\s*", "", string)
+	string = re.sub(r"\s*\]*\s*$", "", string)
+	string = re.sub(r"\]\s*\[\s*", r"\\\\", string)
+	string = re.sub(r"\s+", r"&", string)
+
+	return r"\begin{" + type + "}" + string + r"\end{" + type + "}"
+
 if __name__ == "__main__":
 	print("This file can only be imported")
