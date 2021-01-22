@@ -154,5 +154,45 @@ def sparse_double_sipi(diag, off_diag, b0, bp0, shift, TOL=1E-8):
 
 		yield lambda_, [b0, bp0]
 
+
+def wf_norm(wf, dx, t="norm"):
+	if t == "integral":
+		return wf / np.trapz(wf**2, dx=dx)
+	elif t == "norm":
+		return wf / (np.linalg.norm(wf) * np.sqrt(dx))
+	else:
+		raise ValueError(f"Type {t} is not supported")
+
+def sparse_scf(h, f, *args, TOL_SCF=1E-6, **kwargs):
+	MAX_ITER = 200
+	iter = 0
+	lambda_ = 999
+
+	f = f[1:-1]
+
+	n = np.abs(f)**2
+	epsilon = False
+
+	diag = 1/h**2 * (2 - 4*h**2 * n)
+	off_diag = -1 * 1/h**2 * np.ones(len(diag) - 1)
+
+	while not epsilon and iter <= MAX_ITER:
+		diag = 1/h**2 * (2 - 4*h**2 * n)
+
+		for val, f in sparse_sipi(diag, off_diag, f, *args, **kwargs):
+			continue
+
+		f = wf_norm([0, *f, 0], h)
+		f = f[1:-1]
+
+		n = np.abs(f)**2
+		epsilon = np.abs(val - lambda_) < TOL_SCF
+
+		yield val, f
+
+		iter += 1
+
+
+
 if __name__ == "__main__":
 	print("This file can only be imported")
