@@ -230,7 +230,7 @@ def bipolaron(grid, step, guess, spacing, beta, gamma, *args, TOL_SCF=1E-6, **kw
 		iter += 1
 
 def _create_image(y, h, f, Y):
-	ymax = y[np.argmax(f)]
+	ymax = y[np.argmax(np.abs(f))]
 
 	# Get middle value based on whether the element count in y is odd or even
 	if y.size % 2 == 0:
