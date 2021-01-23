@@ -164,7 +164,7 @@ def wf_norm(wf, dx, t="norm"):
 		raise ValueError(f"Type {t} is not supported")
 
 def sparse_scf(h, f, *args, TOL_SCF=1E-6, **kwargs):
-	MAX_ITER = 200
+	MAX_ITER = 500
 	iter = 0
 	lambda_ = 999
 
@@ -187,12 +187,66 @@ def sparse_scf(h, f, *args, TOL_SCF=1E-6, **kwargs):
 
 		n = np.abs(f)**2
 		epsilon = np.abs(val - lambda_) < TOL_SCF
+		lambda_ = val
 
-		yield val, f
+		yield lambda_, f
 
 		iter += 1
 
+def bipolaron(grid, step, guess, spacing, beta, gamma, *args, TOL_SCF=1E-6, **kwargs):
+	_W = lambda f: beta * np.abs(f)**2
+	_S = lambda f1, f2: np.trapz(f1 * f2, dx=step)
+	_n = lambda f1, f2: (f1**2 + f2**2 + 2*_S(f1, f2)*f1*f2) / (1 + _S(f1, f2)**2)
+	_ls = lambda l, f1, f2: 2*l - beta * np.trapz(np.abs(f1)**2 * np.abs(f2)**2, dx=step)
 
+	MAX_ITER = 200
+	iter = 0
+	lambda_ = 999
+	epsilon = False
+
+	f = guess
+	f1, f2 = _create_image(grid, step, f, spacing)
+	n = _n(f1, f2)
+
+	diag = 1/step**2 * (2 - 4*step**2 * (n - _W(f2)))
+	off_diag = -1 * 1/step**2 * np.ones(len(diag) - 1)
+
+	while not epsilon and iter <= MAX_ITER:
+		n = gamma * _n(f1, f2) + (1 - gamma) * n
+		diag = 1/step**2 * (2 - 4*step**2 * (n - _W(f2)))
+
+		for val, f in sparse_sipi(diag, off_diag, f, *args, **kwargs):
+			continue
+
+		f = wf_norm(f, step)
+		f1, f2 = _create_image(grid, step, f, spacing)
+		nlambda_ = _ls(val, f1, f2)
+
+		epsilon = np.abs(nlambda_ - lambda_) < TOL_SCF
+		lambda_ = nlambda_
+
+		yield lambda_, f1, f2
+
+		iter += 1
+
+def _create_image(y, h, f, Y):
+	ymax = y[np.argmax(f)]
+
+	# Get middle value based on whether the element count in y is odd or even
+	if y.size % 2 == 0:
+		# Even array
+		ymid = y[y.size // 2]
+	else:
+		# Odd array
+		_i = y.size // 2
+		ymid = (y[_i] + y[_i + 1]) / 2
+
+	yshift = [ymid - ymax - Y/2, ymid - ymax + Y/2]
+	nshift = [int(i // h) for i in yshift]
+
+	f1, f2 = [np.roll(f, i) for i in nshift]
+
+	return f1, f2
 
 if __name__ == "__main__":
 	print("This file can only be imported")
